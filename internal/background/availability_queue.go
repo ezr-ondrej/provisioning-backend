@@ -9,14 +9,19 @@ import (
 	"github.com/RHEnVision/provisioning-backend/internal/metrics"
 )
 
+type availabilityRequestInfo struct {
+	ctx context.Context
+	asm *kafka.AvailabilityStatusMessage
+}
+
 // buffered channel for incoming requests
-var kafkaAvailabilityRequests = make(chan *kafka.AvailabilityStatusMessage, availabilityStatusBatchSize)
+var kafkaAvailabilityRequests = make(chan availabilityRequestInfo, availabilityStatusBatchSize)
 
 // EnqueueAvailabilityStatusRequest prepares a status request check to be sent in the next
 // batch to the platform kafka. Messages can be delayed up to several seconds until sent.
 // The function can block if the enqueueing channel is full.
-func EnqueueAvailabilityStatusRequest(msg *kafka.AvailabilityStatusMessage) {
-	kafkaAvailabilityRequests <- msg
+func EnqueueAvailabilityStatusRequest(ctx context.Context, asm *kafka.AvailabilityStatusMessage) {
+	kafkaAvailabilityRequests <- availabilityRequestInfo{ctx: ctx, asm: asm}
 }
 
 // send a message to the background worker for availability check
@@ -35,8 +40,8 @@ func sendAvailabilityRequestMessages(ctx context.Context, batchSize int, tickDur
 
 	for {
 		select {
-		case asm := <-kafkaAvailabilityRequests:
-			msg, err := asm.GenericMessage(ctx)
+		case info := <-kafkaAvailabilityRequests:
+			msg, err := info.asm.GenericMessage(info.ctx)
 			metrics.IncTotalReceivedAvailabilityCheckReqs(err)
 			if err != nil {
 				continue
