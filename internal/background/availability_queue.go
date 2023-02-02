@@ -6,16 +6,17 @@ import (
 
 	"github.com/RHEnVision/provisioning-backend/internal/ctxval"
 	"github.com/RHEnVision/provisioning-backend/internal/kafka"
+	"github.com/RHEnVision/provisioning-backend/internal/metrics"
 )
 
 // buffered channel for incoming requests
-var kafkaAvailabilityRequest = make(chan *kafka.GenericMessage, availabilityStatusBatchSize)
+var kafkaAvailabilityRequests = make(chan *kafka.AvailabilityStatusMessage, availabilityStatusBatchSize)
 
 // EnqueueAvailabilityStatusRequest prepares a status request check to be sent in the next
 // batch to the platform kafka. Messages can be delayed up to several seconds until sent.
 // The function can block if the enqueueing channel is full.
-func EnqueueAvailabilityStatusRequest(msg *kafka.GenericMessage) {
-	kafkaAvailabilityRequest <- msg
+func EnqueueAvailabilityStatusRequest(msg *kafka.AvailabilityStatusMessage) {
+	kafkaAvailabilityRequests <- msg
 }
 
 // send a message to the background worker for availability check
@@ -34,8 +35,13 @@ func sendAvailabilityRequestMessages(ctx context.Context, batchSize int, tickDur
 
 	for {
 		select {
-		case msg := <-kafkaAvailabilityRequest:
-			messageBuffer = append(messageBuffer, msg)
+		case asm := <-kafkaAvailabilityRequests:
+			msg, err := asm.GenericMessage(ctx)
+			metrics.IncTotalReceivedAvailabilityCheckReqs(err)
+			if err != nil {
+				continue
+			}
+			messageBuffer = append(messageBuffer, &msg)
 			length := len(messageBuffer)
 
 			if length >= batchSize {

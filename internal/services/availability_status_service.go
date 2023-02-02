@@ -5,7 +5,6 @@ import (
 
 	"github.com/RHEnVision/provisioning-backend/internal/background"
 	"github.com/RHEnVision/provisioning-backend/internal/kafka"
-	"github.com/RHEnVision/provisioning-backend/internal/metrics"
 	"github.com/RHEnVision/provisioning-backend/internal/payloads"
 	"github.com/go-chi/render"
 )
@@ -18,12 +17,6 @@ func AvailabilityStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	asm := kafka.AvailabilityStatusMessage{SourceID: payload.SourceID}
-	msg, err := asm.GenericMessage(r.Context())
-	if err != nil {
-		renderError(w, r, payloads.NewRenderError(r.Context(), "cannot construct message", err))
-		return
-	}
-	background.EnqueueAvailabilityStatusRequest(&msg)
-	metrics.IncTotalReceivedAvailabilityCheckReqs(err)
+	background.EnqueueAvailabilityStatusRequest(&asm)
 	writeOk(w, r)
 }
